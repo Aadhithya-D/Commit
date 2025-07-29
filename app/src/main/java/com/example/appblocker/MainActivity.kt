@@ -28,9 +28,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -96,6 +103,7 @@ class MainActivity : ComponentActivity() {
                 var hasUsagePermission by remember { mutableStateOf(checkUsageStatsPermission()) }
                 var installedApps by remember { mutableStateOf(emptyList<AppInfo>()) }
                 var overallStats by remember { mutableStateOf<OverallUsageStats?>(null) }
+                var searchQuery by remember { mutableStateOf("") }
 
                 LaunchedEffect(hasUsagePermission) {
                     if (hasUsagePermission) {
@@ -104,6 +112,17 @@ class MainActivity : ComponentActivity() {
                     } else {
                         installedApps = getInstalledApps()
                         overallStats = null
+                    }
+                }
+
+                // Filter apps based on search query
+                val filteredApps = remember(installedApps, searchQuery) {
+                    if (searchQuery.isBlank()) {
+                        installedApps
+                    } else {
+                        installedApps.filter { app ->
+                            app.name.contains(searchQuery, ignoreCase = true)
+                        }
                     }
                 }
 
@@ -120,14 +139,20 @@ class MainActivity : ComponentActivity() {
                         )
                     } else {
                         Column(modifier = Modifier.padding(innerPadding)) {
+                            SearchBar(
+                                searchQuery = searchQuery,
+                                onSearchQueryChange = { searchQuery = it },
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
                             overallStats?.let { stats ->
                                 OverallUsageDisplay(
                                     stats = stats,
                                     modifier = Modifier.padding(16.dp)
                                 )
                             }
+                            
                             AppList(
-                                apps = installedApps,
+                                apps = filteredApps,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -297,6 +322,29 @@ class MainActivity : ComponentActivity() {
             weekOpenCount = weekOpenCount
         )
     }
+}
+
+@Composable
+fun SearchBar(
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedTextField(
+        value = searchQuery,
+        onValueChange = onSearchQueryChange,
+        placeholder = { Text("Search apps...") },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "Search") },
+        trailingIcon = {
+            if (searchQuery.isNotEmpty()) {
+                IconButton(onClick = { onSearchQueryChange("") }) {
+                    Icon(Icons.Filled.Clear, contentDescription = "Clear")
+                }
+            }
+        },
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier.fillMaxWidth()
+    )
 }
 
 @Composable
