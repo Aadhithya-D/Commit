@@ -15,8 +15,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,10 +41,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.example.appblocker.ui.theme.AppBlockerTheme
 import java.text.SimpleDateFormat
+import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -155,23 +161,47 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         else -> {
+                            var selectedTabIndex by remember { mutableIntStateOf(0) }
+                            val tabs = listOf("Apps", "Blocker Plans")
+                            
                             Column(modifier = Modifier.padding(innerPadding)) {
-                                SearchBar(
-                                    searchQuery = searchQuery,
-                                    onSearchQueryChange = { searchQuery = it },
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                )
-                                overallStats?.let { stats ->
-                                    OverallUsageDisplay(
-                                        stats = stats,
-                                        modifier = Modifier.padding(16.dp)
-                                    )
+                                TabRow(
+                                    selectedTabIndex = selectedTabIndex,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    tabs.forEachIndexed { index, title ->
+                                        Tab(
+                                            selected = selectedTabIndex == index,
+                                            onClick = { selectedTabIndex = index },
+                                            text = { Text(title) }
+                                        )
+                                    }
                                 }
                                 
-                                AppList(
-                                    apps = filteredApps,
-                                    modifier = Modifier.weight(1f)
-                                )
+                                when (selectedTabIndex) {
+                                    0 -> {
+                                        // Apps Tab
+                                        AppsTabContent(
+                                            searchQuery = searchQuery,
+                                            onSearchQueryChange = { searchQuery = it },
+                                            filteredApps = filteredApps,
+                                            overallStats = overallStats,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    1 -> {
+                                        // Blocker Plans Tab
+                                        BlockerPlansTabContent(
+                                            currentBlockerPlan = currentBlockerPlan,
+                                            blockerPlanManager = blockerPlanManager,
+                                            onPlanDeleted = {
+                                                hasBlockerPlan = false
+                                                currentBlockerPlan = null
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -593,6 +623,214 @@ fun formatLastUsed(timestamp: Long): String {
         hours > 0 -> "${hours}h ago"
         minutes > 0 -> "${minutes}m ago"
         else -> "Just now"
+    }
+}
+
+@Composable
+fun AppsTabContent(
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    filteredApps: List<AppInfo>,
+    overallStats: OverallUsageStats?,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        SearchBar(
+            searchQuery = searchQuery,
+            onSearchQueryChange = onSearchQueryChange,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        overallStats?.let { stats ->
+            OverallUsageDisplay(
+                stats = stats,
+                modifier = Modifier.padding(16.dp)
+            )
+        }
+        
+        AppList(
+            apps = filteredApps,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+fun BlockerPlansTabContent(
+    currentBlockerPlan: BlockerPlan?,
+    blockerPlanManager: BlockerPlanManager,
+    onPlanDeleted: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        modifier = modifier.padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        if (currentBlockerPlan != null) {
+            item {
+                BlockerPlanCard(
+                    plan = currentBlockerPlan,
+                    onDeletePlan = {
+                        blockerPlanManager.deleteCurrentPlan()
+                        onPlanDeleted()
+                    }
+                )
+            }
+        } else {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "No Blocker Plans",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "You haven't created any blocker plans yet.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BlockerPlanCard(
+    plan: BlockerPlan,
+    onDeletePlan: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = plan.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                // Status indicator
+                Box(
+                    modifier = Modifier
+                        .background(
+                            color = if (plan.isActive) MaterialTheme.colorScheme.primary 
+                                   else MaterialTheme.colorScheme.outline,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (plan.isActive) "Active" else "Inactive",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (plan.isActive) MaterialTheme.colorScheme.onPrimary 
+                               else MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Time Range
+            Text(
+                text = "Block Hours",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "${plan.timeRange.startTime.format(DateTimeFormatter.ofPattern("h:mm a"))} - ${plan.timeRange.endTime.format(DateTimeFormatter.ofPattern("h:mm a"))}",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Blocked Apps Count
+            Text(
+                text = "Blocked Apps",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "${plan.appTimers.size} apps configured",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            
+            if (plan.appTimers.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Show first few app names
+                val appNames = plan.appTimers.values.take(3).map { it.appName }
+                Text(
+                    text = appNames.joinToString(", ") + 
+                           if (plan.appTimers.size > 3) " and ${plan.appTimers.size - 3} more" else "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Current Status
+            val isCurrentlyInBlockTime = plan.timeRange.isCurrentTimeInRange()
+            if (plan.isActive) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(
+                                color = if (isCurrentlyInBlockTime) 
+                                    MaterialTheme.colorScheme.error 
+                                else MaterialTheme.colorScheme.primary,
+                                shape = RoundedCornerShape(4.dp)
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isCurrentlyInBlockTime) "Currently blocking apps" else "Not in block hours",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isCurrentlyInBlockTime) 
+                            MaterialTheme.colorScheme.error 
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Delete button
+            Button(
+                onClick = onDeletePlan,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Delete Plan")
+            }
+        }
     }
 }
 
