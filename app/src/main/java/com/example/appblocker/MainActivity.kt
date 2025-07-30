@@ -104,6 +104,10 @@ class MainActivity : ComponentActivity() {
                 var installedApps by remember { mutableStateOf(emptyList<AppInfo>()) }
                 var overallStats by remember { mutableStateOf<OverallUsageStats?>(null) }
                 var searchQuery by remember { mutableStateOf("") }
+                
+                val blockerPlanManager = remember { BlockerPlanManager(this@MainActivity) }
+                var hasBlockerPlan by remember { mutableStateOf(blockerPlanManager.hasBlockerPlan()) }
+                var currentBlockerPlan by remember { mutableStateOf(blockerPlanManager.getCurrentBlockerPlan()) }
 
                 LaunchedEffect(hasUsagePermission) {
                     if (hasUsagePermission) {
@@ -127,34 +131,48 @@ class MainActivity : ComponentActivity() {
                 }
 
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    if (!hasUsagePermission) {
-                        PermissionRequestScreen(
-                            onRequestPermission = {
-                                requestUsageStatsPermission()
-                            },
-                            onRefresh = {
-                                hasUsagePermission = checkUsageStatsPermission()
-                            },
-                            modifier = Modifier.padding(innerPadding)
-                        )
-                    } else {
-                        Column(modifier = Modifier.padding(innerPadding)) {
-                            SearchBar(
-                                searchQuery = searchQuery,
-                                onSearchQueryChange = { searchQuery = it },
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    when {
+                        !hasUsagePermission -> {
+                            PermissionRequestScreen(
+                                onRequestPermission = {
+                                    requestUsageStatsPermission()
+                                },
+                                onRefresh = {
+                                    hasUsagePermission = checkUsageStatsPermission()
+                                },
+                                modifier = Modifier.padding(innerPadding)
                             )
-                            overallStats?.let { stats ->
-                                OverallUsageDisplay(
-                                    stats = stats,
-                                    modifier = Modifier.padding(16.dp)
+                        }
+                        !hasBlockerPlan -> {
+                            BlockerPlanSetupScreen(
+                                apps = installedApps,
+                                onPlanCreated = { plan ->
+                                    blockerPlanManager.saveBlockerPlan(plan)
+                                    hasBlockerPlan = true
+                                    currentBlockerPlan = plan
+                                },
+                                modifier = Modifier.padding(innerPadding)
+                            )
+                        }
+                        else -> {
+                            Column(modifier = Modifier.padding(innerPadding)) {
+                                SearchBar(
+                                    searchQuery = searchQuery,
+                                    onSearchQueryChange = { searchQuery = it },
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                                overallStats?.let { stats ->
+                                    OverallUsageDisplay(
+                                        stats = stats,
+                                        modifier = Modifier.padding(16.dp)
+                                    )
+                                }
+                                
+                                AppList(
+                                    apps = filteredApps,
+                                    modifier = Modifier.weight(1f)
                                 )
                             }
-                            
-                            AppList(
-                                apps = filteredApps,
-                                modifier = Modifier.weight(1f)
-                            )
                         }
                     }
                 }
