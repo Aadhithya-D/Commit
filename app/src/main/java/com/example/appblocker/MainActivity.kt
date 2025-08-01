@@ -33,17 +33,23 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,6 +65,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.example.appblocker.ui.theme.AppBlockerTheme
 import java.text.SimpleDateFormat
 import java.time.format.DateTimeFormatter
@@ -106,6 +115,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AppBlockerTheme {
+                val navController = rememberNavController()
                 var hasUsagePermission by remember { mutableStateOf(checkUsageStatsPermission()) }
                 var installedApps by remember { mutableStateOf(emptyList<AppInfo>()) }
                 var overallStats by remember { mutableStateOf<OverallUsageStats?>(null) }
@@ -136,34 +146,77 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    when {
-                        !hasUsagePermission -> {
+                NavHost(
+                    navController = navController,
+                    startDestination = if (!hasUsagePermission) "permission" 
+                                     else if (!hasBlockerPlan) "setup" 
+                                     else "main"
+                ) {
+                    composable("permission") {
+                        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                             PermissionRequestScreen(
                                 onRequestPermission = {
                                     requestUsageStatsPermission()
                                 },
                                 onRefresh = {
                                     hasUsagePermission = checkUsageStatsPermission()
+                                    if (hasUsagePermission) {
+                                        if (hasBlockerPlan) {
+                                            navController.navigate("main") {
+                                                popUpTo("permission") { inclusive = true }
+                                            }
+                                        } else {
+                                            navController.navigate("setup") {
+                                                popUpTo("permission") { inclusive = true }
+                                            }
+                                        }
+                                    }
                                 },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }
-                        !hasBlockerPlan -> {
+                    }
+                    
+                    composable("setup") {
+                        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                             BlockerPlanSetupScreen(
                                 apps = installedApps,
                                 onPlanCreated = { plan ->
                                     blockerPlanManager.saveBlockerPlan(plan)
                                     hasBlockerPlan = true
                                     currentBlockerPlan = plan
+                                    navController.navigate("main") {
+                                        popUpTo("setup") { inclusive = true }
+                                    }
                                 },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }
-                        else -> {
-                            var selectedTabIndex by remember { mutableIntStateOf(0) }
-                            val tabs = listOf("Apps", "Blocker Plans")
-                            
+                    }
+                    
+                    composable("edit") {
+                        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                            BlockerPlanSetupScreen(
+                                apps = installedApps,
+                                onPlanCreated = { plan ->
+                                    blockerPlanManager.saveBlockerPlan(plan)
+                                    currentBlockerPlan = plan
+                                    navController.popBackStack()
+                                },
+                                existingPlan = currentBlockerPlan,
+                                onCancel = {
+                                    navController.popBackStack()
+                                },
+                                modifier = Modifier.padding(innerPadding)
+                            )
+                        }
+                    }
+                    
+                    composable("main") {
+                        var selectedTabIndex by remember { mutableIntStateOf(0) }
+                        val tabs = listOf("Apps", "Blocker Plans")
+                        
+                        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                             Column(modifier = Modifier.padding(innerPadding)) {
                                 TabRow(
                                     selectedTabIndex = selectedTabIndex,
@@ -197,6 +250,16 @@ class MainActivity : ComponentActivity() {
                                             onPlanDeleted = {
                                                 hasBlockerPlan = false
                                                 currentBlockerPlan = null
+                                                navController.navigate("setup") {
+                                                    popUpTo("main") { inclusive = true }
+                                                }
+                                            },
+                                            onPlanStatusChanged = { isActive ->
+                                                blockerPlanManager.updatePlanActiveStatus(isActive)
+                                                currentBlockerPlan = currentBlockerPlan?.copy(isActive = isActive)
+                                            },
+                                            onEditPlan = { plan ->
+                                                navController.navigate("edit")
                                             },
                                             modifier = Modifier.weight(1f)
                                         )
@@ -659,6 +722,8 @@ fun BlockerPlansTabContent(
     currentBlockerPlan: BlockerPlan?,
     blockerPlanManager: BlockerPlanManager,
     onPlanDeleted: () -> Unit,
+    onPlanStatusChanged: (Boolean) -> Unit,
+    onEditPlan: (BlockerPlan) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -672,7 +737,9 @@ fun BlockerPlansTabContent(
                     onDeletePlan = {
                         blockerPlanManager.deleteCurrentPlan()
                         onPlanDeleted()
-                    }
+                    },
+                    onStatusChanged = onPlanStatusChanged,
+                    onEditPlan = { onEditPlan(currentBlockerPlan) }
                 )
             }
         } else {
@@ -708,6 +775,8 @@ fun BlockerPlansTabContent(
 fun BlockerPlanCard(
     plan: BlockerPlan,
     onDeletePlan: () -> Unit,
+    onStatusChanged: (Boolean) -> Unit,
+    onEditPlan: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -723,29 +792,91 @@ fun BlockerPlanCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = plan.name,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                // Status indicator
-                Box(
-                    modifier = Modifier
-                        .background(
-                            color = if (plan.isActive) MaterialTheme.colorScheme.primary 
-                                   else MaterialTheme.colorScheme.outline,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = plan.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
                     Text(
                         text = if (plan.isActive) "Active" else "Inactive",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (plan.isActive) MaterialTheme.colorScheme.onPrimary 
-                               else MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Medium
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (plan.isActive) MaterialTheme.colorScheme.primary 
+                               else MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Toggle Switch
+                    Switch(
+                        checked = plan.isActive,
+                        onCheckedChange = onStatusChanged
+                    )
+                    
+                    Spacer(modifier = Modifier.width(8.dp))
+                    
+                    // 3-dots menu
+                    var showMenu by remember { mutableStateOf(false) }
+                    var showDeleteConfirmation by remember { mutableStateOf(false) }
+                    
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More options"
+                            )
+                        }
+                        
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Edit Plan") },
+                                onClick = {
+                                    showMenu = false
+                                    onEditPlan()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete Plan") },
+                                onClick = {
+                                    showMenu = false
+                                    showDeleteConfirmation = true
+                                }
+                            )
+                        }
+                    }
+                    
+                    // Delete confirmation dialog
+                    if (showDeleteConfirmation) {
+                        AlertDialog(
+                            onDismissRequest = { showDeleteConfirmation = false },
+                            title = { Text("Delete Blocker Plan") },
+                            text = { 
+                                Text("Are you sure you want to delete \"${plan.name}\"? This action cannot be undone.")
+                            },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = {
+                                        showDeleteConfirmation = false
+                                        onDeletePlan()
+                                    }
+                                ) {
+                                    Text("Delete")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(
+                                    onClick = { showDeleteConfirmation = false }
+                                ) {
+                                    Text("Cancel")
+                                }
+                            }
+                        )
+                    }
                 }
             }
             
@@ -821,15 +952,7 @@ fun BlockerPlanCard(
                 }
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Delete button
-            Button(
-                onClick = onDeletePlan,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Delete Plan")
-            }
+
         }
     }
 }

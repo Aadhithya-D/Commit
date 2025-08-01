@@ -61,13 +61,15 @@ import java.time.LocalTime
 fun BlockerPlanSetupScreen(
     apps: List<AppInfo>,
     onPlanCreated: (BlockerPlan) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    existingPlan: BlockerPlan? = null,
+    onCancel: (() -> Unit)? = null
 ) {
-    var planName by remember { mutableStateOf("") }
-    var startTime by remember { mutableStateOf(LocalTime.of(9, 0)) }
-    var endTime by remember { mutableStateOf(LocalTime.of(17, 0)) }
+    var planName by remember { mutableStateOf(existingPlan?.name ?: "") }
+    var startTime by remember { mutableStateOf(existingPlan?.timeRange?.startTime ?: LocalTime.of(9, 0)) }
+    var endTime by remember { mutableStateOf(existingPlan?.timeRange?.endTime ?: LocalTime.of(17, 0)) }
     var searchQuery by remember { mutableStateOf("") }
-    var selectedAppConfigs by remember { mutableStateOf<Map<String, AppTimerConfig>>(emptyMap()) }
+    var selectedAppConfigs by remember { mutableStateOf<Map<String, AppTimerConfig>>(existingPlan?.appTimers ?: emptyMap()) }
     var showAppTimerDialog by remember { mutableStateOf<AppInfo?>(null) }
     var showStartTimePicker by remember { mutableStateOf(false) }
     var showEndTimePicker by remember { mutableStateOf(false) }
@@ -201,25 +203,42 @@ fun BlockerPlanSetupScreen(
             }
         }
         
-        // Create plan button
-        Button(
-            onClick = {
-                if (planName.isNotBlank()) {
-                    val plan = BlockerPlan(
-                        id = blockerPlanManager.createPlanId(),
-                        name = planName,
-                        timeRange = TimeRange(startTime, endTime),
-                        appTimers = selectedAppConfigs
-                    )
-                    onPlanCreated(plan)
-                }
-            },
-            enabled = planName.isNotBlank(),
+        // Action buttons
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(16.dp),
+            horizontalArrangement = if (onCancel != null) Arrangement.spacedBy(12.dp) else Arrangement.Center
         ) {
-            Text("Create Blocker Plan")
+            // Cancel button (only show in edit mode)
+            if (onCancel != null) {
+                Button(
+                    onClick = onCancel,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel")
+                }
+            }
+            
+            // Save/Create button
+            Button(
+                onClick = {
+                    if (planName.isNotBlank()) {
+                        val plan = BlockerPlan(
+                            id = existingPlan?.id ?: blockerPlanManager.createPlanId(),
+                            name = planName,
+                            timeRange = TimeRange(startTime, endTime),
+                            appTimers = selectedAppConfigs,
+                            isActive = existingPlan?.isActive ?: true
+                        )
+                        onPlanCreated(plan)
+                    }
+                },
+                enabled = planName.isNotBlank(),
+                modifier = if (onCancel != null) Modifier.weight(1f) else Modifier.fillMaxWidth()
+            ) {
+                Text(if (existingPlan != null) "Save Changes" else "Create Blocker Plan")
+            }
         }
     }
     

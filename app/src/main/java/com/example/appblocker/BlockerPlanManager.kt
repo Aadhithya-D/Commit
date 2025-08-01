@@ -62,6 +62,14 @@ class BlockerPlanManager(context: Context) {
         return UUID.randomUUID().toString()
     }
     
+    fun updatePlanActiveStatus(isActive: Boolean) {
+        val currentPlan = getCurrentBlockerPlan()
+        if (currentPlan != null) {
+            val updatedPlan = currentPlan.copy(isActive = isActive)
+            saveBlockerPlan(updatedPlan)
+        }
+    }
+    
     private class LocalTimeAdapter : JsonSerializer<LocalTime>, JsonDeserializer<LocalTime> {
         private val formatter = DateTimeFormatter.ISO_LOCAL_TIME
         
